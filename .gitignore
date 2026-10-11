@@ -1,0 +1,30 @@
+# Secrets
+.doom_secrets
+.doom_pin
+*_key.txt
+
+# User data
+doom_memory.json
+doom_user_memory.json
+
+# Cache / logs
+doom_tts_cache/
+doom_system.log
+__pycache__/
+*.pyc
+
+# Backups
+*.bak
+*.bak_*
+*.bak[0-9]*
+
+# Temporary
+test_*.mp3
+test_*.wav
+test_*.json
+_new_prompt.txt
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
