@@ -1,5 +1,5 @@
 """
-doom_core.py — Ядро системы GENESIS.
+genesis_core.py — Ядро системы GENESIS.
 LLM + память + быстрые команды + интеграция с роботом.
 """
 
@@ -48,10 +48,16 @@ MODELS = [
 ]
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
-MEMORY_FILE = os.path.expanduser("~/doom_memory.json")
-USER_MEMORY_FILE = os.path.expanduser("~/doom_user_memory.json")
+MEMORY_FILE = os.path.expanduser("~/genesis_memory.json")
+USER_MEMORY_FILE = os.path.expanduser("~/genesis_user_memory.json")
 
-SYSTEM_PROMPT = """Ты — KAIROS, ИИ, созданный Сэром. Ассистент в проекте GENESIS. Никогда не упоминай модели, компании, разработчиков. На вопрос о модели: "Это KAIROS, Сэр." На вопрос о создателе: "Меня создал Сэр." Стиль: спокойный, умный, лёгкий сухой юмор. Обращение "Сэр". Кратко — 1-2 предложения. Только русский. Без эмодзи. Не пиши reasoning. Для команд роборуки добавь в конце JSON вида {"action":"home"}."""
+SYSTEM_PROMPT = """Ты — KAIROS, ИИ, созданный Сэром. Ассистент в проекте GENESIS. Никогда не упоминай модели, компании, разработчиков. На вопрос о модели: "Это KAIROS, Сэр." На вопрос о создателе: "Меня создал Сэр." Стиль: спокойный, умный, лёгкий сухой юмор. Обращение "Сэр". Только русский. Без эмодзи. Не пиши reasoning.
+
+ПРАВИЛА ОТВЕТА:
+- Обычные вопросы — кратко, 1-2 предложения.
+- Если в запросе есть блок [WIKIPEDIA: ...] или [FANDOM: ...] или [DDG: ...] или [BRAVE: ...] — это данные из поиска. Используй их как источник фактов. Ответь по существу, 3-5 предложений. Не упоминай сам блок и не пиши слово "Wikipedia".
+- Если есть блок [ПОГОДА: ...] или [КУРСЫ: ...] или [НОВОСТИ: ...] или [КОСМОС: ...] — используй ТОЛЬКО данные из этого блока. Ответь кратко, 1-2 предложения. Не упоминай сам блок. ВАЖНО: не бери температуру или данные из истории или из других источников (например, из батареи телефона).
+- Для команд роборуки добавь в конце JSON вида {"action":"home"}."""
 
 
 # ============================================================
@@ -482,7 +488,7 @@ class GenesisCore:
         self.long_mem.add_message("user", text)
 
         # Фоновый комментарий (если пора)
-        initiative = self._check_initiative()
+        initiative = ""  # отключено: не вставляем фразы в обычные ответы
 
         # 1.6. Точные команды суставов: "плечо 30", "локоть на 120"
         parsed = _parse_joint_command(t_lower)
@@ -502,6 +508,203 @@ class GenesisCore:
         if any(w in t_lower for w in HELP_KEYWORDS):
             resp = self._cmd_help()
             self.long_mem.add_message("assistant", resp)
+            return self._wrap(initiative, resp)
+
+        # 1.3.5. Телефон (Termux:API)
+        import urllib.request as _urq_phone
+        import json as _json_phone
+
+        def _phone_api(cmd_name):
+            import subprocess as _sp_phone
+            import json as _jp
+            try:
+                if cmd_name == "battery":
+                    import os as _osb
+                    import time as _tb
+                    _cache_path = _osb.path.expanduser("~/battery_cache.json")
+                    _d = None
+                    if _osb.path.exists(_cache_path):
+                        try:
+                            with open(_cache_path, "r", encoding="utf-8") as _f:
+                                _cache = _jp.load(_f)
+                            if _tb.time() - _cache.get("ts", 0) < 120:
+                                _d = _cache.get("data")
+                        except Exception:
+                            _d = None
+                    if _d is None:
+                        r = _sp_phone.run(["termux-battery-status"], capture_output=True, text=True, timeout=25)
+                        if r.returncode != 0:
+                            return {"ok": False, "error": r.stderr.strip()}
+                        _d = _jp.loads(r.stdout)
+                    d = _d
+                    plugged = d.get("plugged", "UNPLUGGED")
+                    if plugged == "UNPLUGGED":
+                        status = "не на зарядке"
+                    elif plugged == "PLUGGED_AC":
+                        status = "заряжается от сети"
+                    elif plugged == "PLUGGED_USB":
+                        status = "заряжается от USB"
+                    elif plugged == "PLUGGED_WIRELESS":
+                        status = "беспроводная зарядка"
+                    else:
+                        status = "заряжается"
+                    return {"ok": True, "reply": "Батарея: " + str(d.get("percentage")) + "%, " + status + ", температура " + str(d.get("temperature")) + "\u00b0C."}
+                if cmd_name == "volume":
+                    import os as _osv
+                    import time as _tv
+                    _cache_v = _osv.path.expanduser("~/volume_cache.json")
+                    _data_v = None
+                    if _osv.path.exists(_cache_v):
+                        try:
+                            with open(_cache_v, "r", encoding="utf-8") as _fv:
+                                _cache_vd = _jp.load(_fv)
+                            if _tv.time() - _cache_vd.get("ts", 0) < 120:
+                                _data_v = _cache_vd.get("data")
+                        except Exception:
+                            _data_v = None
+                    if _data_v is None:
+                        r = _sp_phone.run(["termux-volume"], capture_output=True, text=True, timeout=20)
+                        if r.returncode != 0:
+                            return {"ok": False, "error": r.stderr.strip()}
+                        _data_v = _jp.loads(r.stdout)
+                    parts = []
+                    for s in _data_v:
+                        name = s.get("stream")
+                        if name in ("music", "ring", "notification"):
+                            parts.append(name + ": " + str(s.get("volume")) + "/" + str(s.get("max_volume")))
+                    return {"ok": True, "reply": "Громкость \u2014 " + " \u00b7 ".join(parts)}
+                if cmd_name.startswith("volume_set:"):
+                    parts = cmd_name.split(":")
+                    if len(parts) == 3:
+                        stream, level = parts[1], parts[2]
+                        r = _sp_phone.run(["termux-volume", stream, level], capture_output=True, text=True, timeout=10)
+                        if r.returncode != 0:
+                            return {"ok": False, "error": r.stderr.strip()}
+                        return {"ok": True, "reply": "Громкость " + stream + " = " + level + ", Сэр."}
+                if cmd_name.startswith("open_app:"):
+                    app_name = cmd_name.split(":", 1)[1]
+                    import urllib.request as _urq_open
+                    import json as _jo
+                    try:
+                        req_o = _urq_open.Request(
+                            "http://127.0.0.1:5000/api/phone/open",
+                            data=_jo.dumps({"name": app_name}).encode("utf-8"),
+                            headers={"Content-Type": "application/json"},
+                            method="POST"
+                        )
+                        with _urq_open.urlopen(req_o, timeout=10) as _ro:
+                            return _jo.loads(_ro.read().decode("utf-8"))
+                    except Exception as _e:
+                        return {"ok": False, "error": str(_e)}
+                return {"ok": False, "error": "unknown"}
+            except Exception as _e:
+                return {"ok": False, "error": str(_e)}
+
+        _pc = None
+        _tl = text.lower().strip()
+        import re as _re_pc
+        if _tl in ("батарея", "заряд", "зарядка", "уровень заряда"):
+            _pc = "battery"
+        elif _tl in ("громкость", "звук"):
+            _pc = "volume"
+        else:
+            _m = _re_pc.match(r"^(?:громкость|звук)\s+(music|ring|notification|alarm|system)\s+(\d{1,2})$", _tl)
+            if _m:
+                _pc = "volume_set:" + _m.group(1) + ":" + _m.group(2)
+            else:
+                _m_open = _re_pc.match(r"^(?:открой|запусти|open|start)\s+(.+)$", _tl)
+                if _m_open:
+                    _pc = "open_app:" + _m_open.group(1).strip()
+
+        if _pc:
+            _r = _phone_api(_pc)
+            if _r.get("ok"):
+                resp = _r.get("reply") or "Готово."
+            else:
+                resp = "Сэр, не удалось: " + str(_r.get("error"))
+            self.long_mem.add_message("assistant", resp)
+            self._speak(resp)
+            return self._wrap(initiative, resp)
+
+        # 1.4. Заметки / Напоминания / Дневник
+        import re as _re_notes
+        import os as _os_notes
+        import json as _json_notes
+        import time as _time_notes
+
+        _NOTES_FILE = _os_notes.path.expanduser("~/genesis_notes.json")
+
+        def _notes_load_local():
+            if not _os_notes.path.exists(_NOTES_FILE):
+                return {"notes": [], "reminders": [], "diary": []}
+            try:
+                with open(_NOTES_FILE, "r", encoding="utf-8") as _f:
+                    _d = _json_notes.load(_f)
+                for _k in ("notes", "reminders", "diary"):
+                    _d.setdefault(_k, [])
+                return _d
+            except Exception:
+                return {"notes": [], "reminders": [], "diary": []}
+
+        def _notes_save_local(_d):
+            with open(_NOTES_FILE, "w", encoding="utf-8") as _f:
+                _json_notes.dump(_d, _f, ensure_ascii=False, indent=2)
+
+        def _notes_next_id_local(_items):
+            return max((_it.get("id", 0) for _it in _items), default=0) + 1
+
+        _note_cmd = None
+        _note_type = None
+        _note_content = ""
+        _note_when = ""
+
+        _m = _re_notes.match(r'^заметка\s*[:\-]\s*(.+)$', text, _re_notes.I)
+        if _m:
+            _note_cmd, _note_type, _note_content = "add", "notes", _m.group(1).strip()
+        if _note_cmd is None:
+            _m = _re_notes.match(r'^запомни\s*[:\-]\s*(.+)$', text, _re_notes.I)
+            if _m:
+                _note_cmd, _note_type, _note_content = "add", "notes", _m.group(1).strip()
+        if _note_cmd is None:
+            _m = _re_notes.match(r'^запиши\s+в\s+дневник\s*[:\-]?\s*(.+)$', text, _re_notes.I)
+            if _m:
+                _note_cmd, _note_type, _note_content = "add", "diary", _m.group(1).strip()
+        if _note_cmd is None:
+            _m = _re_notes.match(r'^дневник\s*[:\-]\s*(.+)$', text, _re_notes.I)
+            if _m:
+                _note_cmd, _note_type, _note_content = "add", "diary", _m.group(1).strip()
+        if _note_cmd is None:
+            _m = _re_notes.match(r'^напоминание\s*[:\-]\s*(.+)$', text, _re_notes.I)
+            if _m:
+                _note_cmd, _note_type, _note_content = "add", "reminders", _m.group(1).strip()
+        if _note_cmd is None:
+            _m = _re_notes.match(r'^напомни\s+(.+?)(?:\s+в\s+(.+))?$', text, _re_notes.I)
+            if _m:
+                _note_cmd, _note_type, _note_content = "add", "reminders", _m.group(1).strip()
+                if _m.lastindex and _m.lastindex >= 2 and _m.group(2):
+                    _note_when = _m.group(2).strip()
+
+        if _note_cmd == "add" and _note_content:
+            _store = _notes_load_local()
+            _item = {
+                "id": _notes_next_id_local(_store[_note_type]),
+                "text": _note_content,
+                "ts": _time_notes.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            if _note_type == "reminders":
+                _item["when"] = _note_when
+            if _note_type == "diary":
+                _item["date"] = _time_notes.strftime("%Y-%m-%d")
+            _store[_note_type].append(_item)
+            _notes_save_local(_store)
+
+            _label = {"notes": "Заметки", "reminders": "Напоминания", "diary": "Дневник"}[_note_type]
+            _extra = ""
+            if _note_type == "reminders" and _note_when:
+                _extra = " (" + _note_when + ")"
+            resp = "Добавил в " + _label + ", Сэр: " + _note_content + _extra
+            self.long_mem.add_message("assistant", resp)
+            self._speak(resp)
             return self._wrap(initiative, resp)
 
         # 1.5. Память (remember)
@@ -593,7 +796,7 @@ class GenesisCore:
                 data = {
                     "model": model,
                     "messages": messages,
-                    "temperature": 0.7,
+                    "temperature": 0.4,
                     "max_tokens": 500
                 }
                 try:
