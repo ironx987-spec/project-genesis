@@ -10,23 +10,51 @@
 
 ## What is Project Genesis?
 
-**Project Genesis** is a personal research project by a 15-year-old developer. It combines a **large language model assistant (KAIROS)**, **voice and text control in Russian**, a **3D-robotic arm visualization**, and an **ESP32-controlled physical robot arm**.
+**Project Genesis** is a personal research project by a **15-year-old developer** from Hrodna, Belarus. It combines a **large language model assistant (KAIROS)**, **voice and text control in Russian**, a **3D-robotic arm visualization**, and an **ESP32-controlled physical robot arm**.
 
-The goal: build a real AI assistant that can think, answer, and control physical hardware — like JARVIS, but on a budget and built from scratch.
+The goal: build a real AI assistant that can think, answer, control physical hardware — like JARVIS, but on a budget and built from scratch.
 
 ---
 
 ## Features
 
-- **AI assistant (KAIROS)** powered by LLM (Qwen 3.8 Max via OpenRouter).
-- **Voice & text control** in Russian (Web Speech API).
-- **6-DOF robotic arm** visualization (Three.js, OrbitControls).
-- **Real-time angle commands**: base, shoulder, elbow, wrist (pitch/roll), gripper.
-- **Safe limits** and validation for each joint.
-- **Secure chat history** with PIN protection.
-- **PWA** — installable on Android home screen.
-- **3D model synchronized** with commands.
-- **ESP32 integration** (hardware in development).
+### AI & Chat
+- **KAIROS** — AI assistant powered by **Qwen 3.8 Max** (OpenRouter).
+- Personality: calm, smart, dry humor. Address: **"Сэр"**.
+- **Memory** (LongTerm + UserMemory).
+- **Chat with bubbles** (messenger style).
+- **Voice input** (Web Speech API, Russian).
+
+### Live Data (in chat + Info tab)
+- **Weather** — OpenWeather (Hrodna, BY).
+- **Currencies** — NBRB (USD, EUR, PLN, BYN).
+- **News** — Habr + Onliner + BBC (RSS, 10 mixed).
+- **Space** — Moon phase + random fact.
+
+### Search
+- **Wikipedia** (srsearch — handles Russian cases).
+- **Fandom** (Marvel, games).
+- **YouTube** (3 videos for "найди видео про X").
+- Links open in new tab.
+
+### Notes / Reminders / Diary
+- **Notes** — add, delete, list (JSON).
+- **Reminders** — "напомни X в YYYY-MM-DD HH:MM" → Termux notification.
+- **Diary** — entries by date.
+
+### Phone (Termux:API)
+- **Battery** — status + cache 30 sec.
+- **Volume** — get/set (music, ring, alarm).
+- **Open apps** — via `am start`.
+
+### UI
+- **5 tabs** — 💬 Main, 🦾 Control, 📰 Info, 📝 Notes, ⚙️ Settings.
+- **3D 6-DOF robotic arm** (Three.js + OrbitControls).
+- **6 sliders** + HOME button.
+- **Defense mode** 🛡️ — red star + PIN.
+- **Chat history** with PIN + delete individual entries.
+- **New chat** (⟳).
+- **PWA** — installable, blue star icon.
 
 ---
 
@@ -35,10 +63,10 @@ The goal: build a real AI assistant that can think, answer, and control physical
 | Layer | Technology |
 |---|---|
 | Backend | Python 3.14, Flask |
-| LLM | Qwen 3.8 Max (OpenRouter API) |
-| Frontend | HTML, CSS, JavaScript, Three.js |
-| Voice | Web Speech API, Android TTS |
-| Hardware | ESP32-S3, PCA9685, servos (DS3240, MG996R) |
+| LLM | Qwen 3.8 Max (OpenRouter) |
+| Frontend | HTML, CSS, JS, Three.js |
+| Voice | Web Speech API |
+| Hardware | ESP32-S3, PCA9685, DS3240 + MG996R servos |
 | Firmware | MicroPython |
 | Runtime | Termux (Android) |
 | Deployment | PWA (manifest + Service Worker) |
@@ -47,114 +75,47 @@ The goal: build a real AI assistant that can think, answer, and control physical
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────┐
-│  Termux (Android)                       │
-│                                         │
-│  doom_core.py   →  LLM (OpenRouter)     │
-│       ↓                                 │
-│  doom_web.py    →  Web UI (Flask)       │
-│       ↓                                 │
-│  esp_bridge.py  ─── UDP ────┐           │
-└─────────────────────────────┼───────────┘
-                              │
-                         WiFi (LAN)
-                              │
-                              ↓
-┌─────────────────────────────────────────┐
-│  ESP32-S3 (MicroPython)                 │
-│       ↓                                 │
-│  PCA9685 (I2C) → 6 servos               │
-└─────────────────────────────────────────┘
-```
+cd ~/genesis-repo
+cp .gitignore .gitignore.bak
 
----
+cat << 'EOF' > .gitignore
+# Secrets
+.genesis_secrets
+.genesis_pin
+.doom_secrets
+.doom_pin
+*_key.txt
 
-## Installation
+# User data
+genesis_memory.json
+genesis_user_memory.json
+genesis_notes.json
+doom_memory.json
+doom_user_memory.json
 
-### Requirements
+# Cache / logs
+genesis_tts_cache/
+doom_tts_cache/
+genesis_system.log
+doom_system.log
+__pycache__/
+*.pyc
 
-- Android device with Termux installed.
-- Termux:API app (for hardware features).
-- Python 3.10+.
-- An OpenRouter API key (free).
+# PID
+*.pid
 
-### Steps
+# Backups
+*.bak
+*.bak_*
+*.bak[0-9]*
 
-```bash
-# 1. Install dependencies
-pkg update && pkg upgrade
-pkg install python mpv ffmpeg termux-api git
+# Temporary
+test_*.mp3
+test_*.wav
+test_*.json
+_new_prompt.txt
 
-# 2. Clone the repository
-git clone https://github.com/ironx987-spec/project-genesis.git
-cd project-genesis
-
-# 3. Install Python packages
-pip install flask edge-tts
-
-# 4. Set up your OpenRouter key
-echo "OPENROUTER_KEY=sk-or-v1-YOUR_KEY_HERE" > ~/.doom_secrets
-
-# 5. Set up PIN
-echo "your_pin" > ~/.doom_pin
-
-# 6. Run
-python3 doom_launcher.py
-```
-
-Then open **http://127.0.0.1:5000** in your browser.
-
----
-
-## Usage
-
-### Text commands
-
-| Command | Action |
-|---|---|
-| `плечо 30` | Shoulder → 30° |
-| `локоть 120` | Elbow → 120° |
-| `база 45` | Base → 45° |
-| `схват 100` | Gripper → close |
-| `домой` | Return to home position |
-
-### Voice
-
-Press the microphone button and speak in Russian.
-
-### Web interface
-
-- **Tab 1 (Основное)** — chat with KAIROS.
-- **Tab 2 (Управление)** — manual control (sliders + 3D view).
-
----
-
-## Roadmap
-
-- [x] LLM integration (KAIROS)
-- [x] 3D robotic arm visualization
-- [x] Text & voice commands
-- [x] PWA (installable app)
-- [x] Secure chat history with PIN
-- [ ] ESP32 hardware integration
-- [ ] Weather, news, reminders
-- [ ] Local LLM (offline mode)
-- [ ] Computer vision (ESP32-CAM)
-- [ ] Sensor integration (VL53L0X, MPU6050, FSR402)
-- [ ] English localization
-
----
-
-## Author
-
-**Aleksei Zverzhevich** — 15 years old.
-
-- GitHub: [@ironx987-spec](https://github.com/ironx987-spec)
-- Project: [project-genesis](https://github.com/ironx987-spec/project-genesis)
-
----
-
-## License
-
-This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/

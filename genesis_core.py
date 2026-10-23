@@ -27,7 +27,7 @@ except Exception as _e:
 # ============================================================
 
 def _load_api_key():
-    secrets_path = os.path.expanduser("~/.doom_secrets")
+    secrets_path = os.path.expanduser("~/.genesis_secrets")
     try:
         with open(secrets_path, "r") as f:
             for line in f:

@@ -36,7 +36,8 @@ def _load_pin():
         with open(path, "r") as f:
             return f.read().strip()
     except FileNotFoundError:
-        return "1234"
+        print("[GENESIS WEB] ВНИМАНИЕ: ~/.genesis_pin не найден.")
+        return ""
 
 PIN_DEFAULT = _load_pin()
 GLOBAL_BRIDGE = None
