@@ -1,17 +1,27 @@
 # Secrets
 .genesis_secrets
 .genesis_pin
+.doom_secrets
+.doom_pin
 *_key.txt
 
 # User data
+genesis_memory.json
+genesis_user_memory.json
+genesis_notes.json
 doom_memory.json
 doom_user_memory.json
 
 # Cache / logs
+genesis_tts_cache/
 doom_tts_cache/
+genesis_system.log
 doom_system.log
 __pycache__/
 *.pyc
+
+# PID
+*.pid
 
 # Backups
 *.bak
